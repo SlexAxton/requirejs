@@ -360,9 +360,9 @@ var require;
      * Simple function to mix in properties from source into target,
      * but only if target does not already have a property of the same name.
      */
-    require.mixin = function (target, source, override) {
+    require.mixin = function (target, source, overrider) {
         for (var prop in source) {
-            if (!(prop in empty) && (!(prop in target) || override)) {
+            if (!(prop in empty) && (!(prop in target) || overrider)) {
                 target[prop] = source[prop];
             }
         }
