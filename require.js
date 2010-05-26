@@ -1099,7 +1099,10 @@ var require;
      * @private
      */
     require.onScriptLoad = function (evt) {
-        var node = evt.target || evt.srcElement, contextName, moduleName;
+        //Using currentTarget instead of target for Firefox 2.0's sake. Not
+        //all old browsers will be supported, but this one was easy enough
+        //to support and still makes sense.
+        var node = evt.currentTarget || evt.srcElement, contextName, moduleName;
         if (evt.type === "load" || readyRegExp.test(node.readyState)) {
             //Pull out the name of the module and the context.
             contextName = node.getAttribute("data-requirecontext");
@@ -1277,8 +1280,18 @@ var require;
             if (self === self.top) {
                 scrollIntervalId = setInterval(function () {
                     try {
-                        document.documentElement.doScroll("left");
-                        require.pageLoaded();
+                        //From this ticket:
+                        //http://bugs.dojotoolkit.org/ticket/11106,
+                        //In IE HTML Application (HTA), such as in a selenium test,
+                        //javascript in the iframe can't see anything outside
+                        //of it, so self===self.top is true, but the iframe is
+                        //not the top window and doScroll will be available
+                        //before document.body is set. Test document.body
+                        //before trying the doScroll trick.
+                        if (document.body) {
+                            document.documentElement.doScroll("left");
+                            require.pageLoaded();
+                        }
                     } catch (e) {}
                 }, 30);
             }
