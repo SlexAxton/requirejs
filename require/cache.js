@@ -39,10 +39,19 @@
          * Called when a dependency needs to be loaded.
          */
         load: function (url, contextName) {
-            var cacheCallback = function() {
+            var context = require.s.contexts[contextName],
+                name    = 'c-' + url;
+            
+            function cacheCallback() {
+                context.loaded[name] = true;
+                require.checkLoaded(contextName);
                 //Remove the script element from the Head
                 this.parentNode.removeChild(this);
             };
+            
+            context.cacheWaiting.push({
+                name: name
+            });
             
             //Attach a script to the dom and remove it once it loads
             //Set the type of the node to 'script/cache' via Souders EFWS and LABjs methods
