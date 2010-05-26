@@ -48,6 +48,7 @@
             
             // Remove the script node after we're done loading it
             node.onload = function() {
+                context.loaded[url] = true;
                 head.removeChild(node);
             };
 
