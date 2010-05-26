@@ -39,40 +39,14 @@
          * Called when a dependency needs to be loaded.
          */
         load: function (url, contextName) {
-            var context = require.s.contexts[contextName],
-                data = {
-                    name: url
-                },
-                head = require.s.head,
-                node = head.ownerDocument.createElement("script");
-            
-            // Remove the script node after we're done loading it
-            node.onload = function() {
-                context.loaded[url] = true;
-                head.removeChild(node);
+            var cacheCallback = function() {
+                //Remove the script element from the Head
+                this.parentNode.removeChild(this);
             };
-
-            //Hold on to the data for later dependency resolution in orderDeps.
-            context.cacheWaiting.push(data);
-
-            context.loaded[name] = false;
             
+            //Attach a script to the dom and remove it once it loads
             //Set the type of the node to 'script/cache' via Souders EFWS and LABjs methods
-            node.type = "script/cache";
-            node.charset = "utf-8";
-            node.src = url;
-
-            //Use async so Gecko does not block on executing the script if something
-            //like a long-polling comet tag is being run first. Gecko likes
-            //to evaluate scripts in DOM order, even for dynamic scripts.
-            //It will fetch them async, but only evaluate the contents in DOM
-            //order, so a long-polling script tag can delay execution of scripts
-            //after it. But telling Gecko we expect async gets us the behavior
-            //we want -- execute it whenever it is finished downloading. Only
-            //Helps Firefox 3.6+
-            node.setAttribute("async", "async");
-
-            head.appendChild(node);
+            require.attach(url, contextName, "require/cache", cacheCallback, "script/cache");
         },
 
         /**
