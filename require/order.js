@@ -40,7 +40,7 @@
          */
         load: function (url, contextName) {
             var context = require.s.contexts[contextName],
-                name    = 'c-' + url;
+                name    = 'o-' + url;
             
             function orderCallback() {
                 context.loaded[name] = true;
@@ -50,19 +50,20 @@
             };
             
             context.orderWaiting.push({
-                name: name
+                name : name,
+                url  : url
             });
             
             //Attach a script to the dom and remove it once it loads
-            //Set the type of the node to 'script/order' via Souders EFWS and LABjs methods
-            require.attach(url, contextName, "require/order", orderCallback, "script/order");
+            //Set the type of the node to 'script/cache' via Souders EFWS and LABjs methods
+            require.attach(url, contextName, "require/order", orderCallback, "script/cache");
         },
 
         /**
          * Called when the dependencies of a module are checked.
          */
         checkDeps: function (name, deps, context) {
-            //No-op, checkDeps never gets these orderd items, they are
+            //No-op, checkDeps never gets these cached items, they are
             //never executed, and will be checked when they're loaded for real
         },
 
@@ -81,9 +82,14 @@
             //add more things to fetch.
             var i, dep, waitAry = context.orderWaiting;
             context.orderWaiting = [];
+            
             for (i = 0; (dep = waitAry[i]); i++) {
-                context.defined[dep.name] = dep.value;
+                //The last boolean value is the 'skipasync' flag on attach() that forces FF/Opera 
+                //to execute scripts in order, but they'll still load asynchonously.
+                require.attach(dep.url, context.contextName, "require/order", function(){}, "script/javascript", true);
             }
+            
+            
         }
     });
 }());
