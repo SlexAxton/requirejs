@@ -10,7 +10,7 @@
 "use strict";
 //>>includeEnd("useStrict");
 
-(function (global) {
+(function () {
     //A place to hold callback functions
     require._order = {};
 
@@ -23,7 +23,7 @@
         // Currently, Firefox and Opera can't use 'script/cache' but execute
         // injected scripts in order unless the 'async' flag is present.
         supportsInOrderExecution: (function(){
-            return ((global.opera && Object.prototype.toString.call(global.opera) == "[object Opera]") || ('mozIsLocallyAvailable' in window.navigator));
+            return ((window.opera && Object.prototype.toString.call(window.opera) == "[object Opera]") || ('mozIsLocallyAvailable' in window.navigator));
         })(),
 
 
@@ -136,4 +136,4 @@
             context.orderWaiting = [];
         }
     });
-}(this));
+}());
