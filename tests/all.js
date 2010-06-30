@@ -1,6 +1,12 @@
 doh.registerUrl("simple", "../simple.html");
 doh.registerUrl("config", "../config.html");
 doh.registerUrl("simple-nohead", "../simple-nohead.html");
+
+//Only do the base test if the urls work out.
+if (location.href.indexOf('http://127.0.0.1/requirejs/') === 0) {
+    doh.registerUrl("simple-badbase", "../simple-badbase.html");
+}
+
 doh.registerUrl("circular", "../circular.html");
 doh.registerUrl("depoverlap", "../depoverlap.html");
 doh.registerUrl("multiversion", "../multiversion.html", 10000);
@@ -14,6 +20,7 @@ doh.registerUrl("pause/resume", "../pauseresume/pauseresume.html", 10000);
 doh.registerUrl("afterload", "../afterload.html", 10000);
 doh.registerUrl("text", "../text/text.html");
 doh.registerUrl("jsonp", "../jsonp/jsonp.html");
+doh.registerUrl("order", "../order/order.html");
 doh.registerUrl("relative", "../relative/relative.html");
 doh.registerUrl("transportD", "../transportD/transportD.html");
 doh.registerUrl("priority", "../priority/priority.html");

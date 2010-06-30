@@ -23,7 +23,7 @@ var require;
             readyRegExp = /^(complete|loaded)$/,
             isBrowser = !!(typeof window !== "undefined" && navigator && document),
             isWebWorker = !isBrowser && typeof importScripts !== "undefined",
-            ostring = Object.prototype.toString, scrollIntervalId, req;
+            ostring = Object.prototype.toString, scrollIntervalId, req, baseElement;
 
     function isFunction(it) {
         return ostring.call(it) === "[object Function]";
@@ -214,6 +214,7 @@ var require;
                 loaded: {
                     "require": true
                 },
+                urlFetched: {},
                 defined: {},
                 modifiers: {}
             };
@@ -330,8 +331,8 @@ var require;
             //Store index of insertion for quick lookup
             context.waiting[name] = newLength - 1;
 
-            //Mark the module as specified: not loaded yet, but in the process,
-            //so no need to fetch it again. Important to do it here for the
+            //Mark the module as specified so no need to fetch it again.
+            //Important to set specified here for the
             //pause/resume case where there are multiple modules in a file.
             context.specified[name] = true;
 
@@ -369,6 +370,13 @@ var require;
             require.checkLoaded(contextName);
         }
 
+        //Set loaded here for modules that are also loaded
+        //as part of a layer, where onScriptLoad is not fired
+        //for those cases. Do this after the inline define and
+        //dependency tracing is done.
+        if (name) {
+            context.loaded[name] = true;
+        }
         return require;
     };
 
@@ -407,7 +415,16 @@ var require;
     };
 
     require.isBrowser = s.isBrowser;
-    s.head = isBrowser ? document.getElementsByTagName("head")[0] : null;
+    if (isBrowser) {
+        s.head = document.getElementsByTagName("head")[0];
+        //If BASE tag is in play, using appendChild is a problem for IE6.
+        //When that browser dies, this can be removed. Details in this jQuery bug:
+        //http://dev.jquery.com/ticket/2709
+        baseElement = document.getElementsByTagName("base")[0];
+        if (baseElement) {
+            s.head = baseElement.parentNode;
+        }
+    }
 
     //>>excludeStart("requireExcludePlugin", pragmas.requireExcludePlugin);
     /**
@@ -669,9 +686,16 @@ var require;
      * @param {String} contextName the name of the context to use.
      */
     require.load = function (moduleName, contextName) {
-        var context = s.contexts[contextName], url;
+        var context = s.contexts[contextName],
+            urlFetched = context.urlFetched,
+            loaded = context.loaded, url;
         s.isDone = false;
-        context.loaded[moduleName] = false;
+
+        //Only set loaded to false for tracking if it has not already been set.
+        if (!loaded[moduleName]) {
+            loaded[moduleName] = false;
+        }
+
         //>>excludeStart("requireExcludeContext", pragmas.requireExcludeContext);
         if (contextName !== s.ctxName) {
             //Not in the right context now, hold on to it until
@@ -681,7 +705,10 @@ var require;
         //>>excludeEnd("requireExcludeContext");
             //First derive the path name for the module.
             url = require.nameToUrl(moduleName, null, contextName);
-            require.attach(url, contextName, moduleName);
+            if (!urlFetched[url]) {
+                require.attach(url, contextName, moduleName);
+                urlFetched[url] = true;
+            }
             context.startTime = (new Date()).getTime();
         //>>excludeStart("requireExcludeContext", pragmas.requireExcludeContext);
         }
@@ -1176,7 +1203,7 @@ var require;
             }
             node.src = url;
 
-            return s.head.appendChild(node);
+            return baseElement ? s.head.insertBefore(node, baseElement) : s.head.appendChild(node);
         } else if (isWebWorker) {
             //In a web worker, use importScripts. This is not a very
             //efficient use of importScripts, importScripts will block until

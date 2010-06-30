@@ -1,37 +1,70 @@
 /**
- * @license RequireJS jsonp Copyright (c) 2004-2010, The Dojo Foundation All Rights Reserved.
+ * @license RequireJS order Copyright (c) 2004-2010, The Dojo Foundation All Rights Reserved.
  * Available via the MIT, GPL or new BSD license.
  * see: http://github.com/jrburke/requirejs for details
  */
 /*jslint nomen: false, plusplus: false */
-/*global require: false, setTimeout: false */
+/*global require: false, window: false, document: false, setTimeout: false */
 
 //>>includeStart("useStrict", pragmas.useStrict);
 "use strict";
 //>>includeEnd("useStrict");
 
 (function () {
-    //A place to hold callback functions
-    require._order = {};
+    //Sadly necessary browser inference due to differences in the way
+    //that browsers load and execute dynamically inserted javascript
+    //and whether the script/cache method works.
+    //Currently, Gecko and Opera do not load/fire onload for scripts with
+    //type="script/cache" but they execute injected scripts in order
+    //unless the 'async' flag is present.
+    var supportsInOrderExecution = ((window.opera && Object.prototype.toString.call(window.opera) === "[object Opera]") ||
+                               //If Firefox 2 does not have to be supported, then
+                               //a better check may be:
+                               //('mozIsLocallyAvailable' in window.navigator)
+                               ("MozAppearance" in document.documentElement.style)),
+        readyRegExp = /^(complete|loaded)$/;
+
+    //Callback used by the type="script/cache" callback that indicates a script
+    //has finished downloading.
+    function scriptCacheCallback(evt) {
+        var node = evt.currentTarget || evt.srcElement,
+            context, contextName, moduleName, waiting;
+
+        if (evt.type === "load" || readyRegExp.test(node.readyState)) {
+            //Pull out the name of the module and the context.
+            contextName = node.getAttribute("data-requirecontext");
+            moduleName = node.getAttribute("data-requiremodule");
+            context = require.s.contexts[contextName];
+
+            //Mark this cache request as loaded
+            context.orderCount -= 1;
+
+            //If no other order cache items are in the queue, evaluate them
+            //all now as normal required modules, and reset waiting state.
+            if (!context.orderCount) {
+                waiting = context.orderWaiting;
+                context.orderWaiting = [];
+                require(waiting, contextName);
+            }
+
+            //Remove this script tag from the DOM
+            //Use a setTimeout for cleanup because some older IE versions vomit
+            //if removing a script node while it is being evaluated.
+            setTimeout(function () {
+                node.parentNode.removeChild(node);
+            }, 15);
+        }
+    }
 
     require.plugin({
         prefix: "order",
-        
-        // Sadly necessary browser inference due to differences in the way
-        // that browsers load and execute dynamically inserted javascript
-        // and whether the script/cache method works.
-        // Currently, Firefox and Opera can't use 'script/cache' but execute
-        // injected scripts in order unless the 'async' flag is present.
-        supportsInOrderExecution: (function(){
-            return ((window.opera && Object.prototype.toString.call(window.opera) == "[object Opera]") || ('mozIsLocallyAvailable' in window.navigator));
-        })(),
-
 
         /**
          * This callback is prefix-specific, only gets called for this prefix
          */
         require: function (name, deps, callback, context) {
-            //No-op
+            //No-op, require never gets these order items, they are always
+            //a dependency, see load for the action.
         },
 
         /**
@@ -41,9 +74,7 @@
         newContext: function (context) {
             require.mixin(context, {
                 orderWaiting: [],
-                // This one doesn't get destroyed so we know what order to re-run the plugin
-                // in after a 'script/cache' call.
-                orderSequence:[]
+                orderCount: 0
             });
         },
 
@@ -52,74 +83,35 @@
          */
         load: function (name, contextName) {
             var context = require.s.contexts[contextName],
-                url     = require.nameToUrl(name, null, contextName),
-                orderCallback,
-                scriptType; //Intentionally undefined if we want the default type
-            
-            if(this.supportsInOrderExecution) {
-                //We can safely inject scripts without the async attribute and they will execute
-                //in order, regardless of when they finished downloading.
-                orderCallback = function(){};
-                
-                //do a regular require here, but add the names to require.s.skipAsync
-                require.s.skipAsync[url] = true;
-                
-                //TODO:: Do a normal require call
-                //QUESTION:: Perhaps we should detect this prior to getting to load? Might make it easier.
-                
-                //do we need to remove from skipAsync? Probably doesn't matter at this point...
-            }
-            else {
-                //QUESTION:: Should we split this back out into the 'cache' plugin, to make this more clear?
-                
-                //We need a 'script/cache' technique to get all of our scripts on the disk
-                //so when we inject them, they execute immediately, and in order
+                url = require.nameToUrl(name, null, contextName);
+
+            //Make sure the async attribute is not set for any pathway involving
+            //this script.
+            require.s.skipAsync[url] = true;
+            if (supportsInOrderExecution) {
+                //Just a normal script tag append, but without async attribute
+                //on the script.
+                require([name], contextName);
+            } else {
                 //Credits to Steve Souders (in EFWS) and Kyle Simpson (in LABJS)
-                orderCallback = function() {
-                    context.loaded[name] = true;
-                    require.checkLoaded(contextName);
-                    
-                    //TODO:: Reinject the script as a normal script if all of the elements in
-                    //       context.orderSequence prior to the script here have finished as well.
-                    //       We don't have to wait for ALL scripts to load, just the ones prior to
-                    //       this one. This technique can have very good speed benefits.
-                    
-                    //Remove the script element from the Head
-                    //Use a setTimeout for cleanup because some older IE versions vomit
-                    //if removing a script node while it is being evaluated.
-                    var scriptElem = this;
-                    setTimeout(function () {
-                        scriptElem.parentNode.removeChild(scriptElem);
-                    }, 15);
-                };
-                
-                //Merely convention, not a standard
-                scriptType = 'script/cache';
-                
-                //This array is only used with the 'script/cache' method, so only fill it up in that case
-                context.orderSequence.push({
-                    name : name,
-                    url  : url
-                });
+                //for finding that scripts with type="script/cache" allow scripts
+                //to be downloaded into browser cache but not executed. Use that
+                //so that subsequent addition of a real type="text/javascript"
+                //tag will cause the scripts to be executed immediately in the
+                //correct order.
+                context.orderWaiting.push(name);
+                context.orderCount += 1;
+                context.loaded[name] = false;
+                require.attach(url, contextName, name, scriptCacheCallback, "script/cache");
             }
-            
-            //Add the script to the waiting queue to avoid dupes
-            context.orderWaiting.push({
-                name : name,
-                url  : url
-            });
-            
-            //Attach a script to the dom and remove it once it loads
-            //Set the type of the node to 'script/cache' via Souders EFWS and LABjs methods
-            require.attach(url, contextName, "require/order", orderCallback, scriptType);
         },
 
         /**
          * Called when the dependencies of a module are checked.
          */
         checkDeps: function (name, deps, context) {
-            //No-op, checkDeps never gets these cached items, they are
-            //never executed, and will be checked when they're loaded for real
+            //No-op, checkDeps never gets these order items, they are always
+            //a dependency, see load for the action.
         },
 
         /**
@@ -130,10 +122,10 @@
         },
 
         /**
-         * Called when all modules have been loaded.
+         * Called when all modules have been loaded. Not needed for this plugin.
+         * State is reset as part of scriptCacheCallback. 
          */
         orderDeps: function (context) {
-            context.orderWaiting = [];
         }
     });
 }());
