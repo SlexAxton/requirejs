@@ -28,23 +28,43 @@
     //has finished downloading.
     function scriptCacheCallback(evt) {
         var node = evt.currentTarget || evt.srcElement,
-            context, contextName, moduleName, waiting;
+            context, contextName, moduleName, waiting,
+            oSequence, oLookup,
+            index, readyScripts, readyCount = 0;
 
         if (evt.type === "load" || readyRegExp.test(node.readyState)) {
             //Pull out the name of the module and the context.
             contextName = node.getAttribute("data-requirecontext");
             moduleName = node.getAttribute("data-requiremodule");
             context = require.s.contexts[contextName];
+            oLookup = context.orderSequenceLookup;
+            waiting = context.orderWaiting;
 
+            //Do a lookup for the index of that module in the sequence (indexed instead of a search)
+            index = oLookup[moduleName];
             //Mark this cache request as loaded
-            context.orderCount -= 1;
+            context.orderSequence[index].loaded = true;
+            
+            //Loop through the waiting resources and see if we can inject anything
+            while(readyCount < waiting.length && context.orderSequence[oLookup[waiting[readyCount]]].loaded) {
+                ++readyCount;
+            }
 
-            //If no other order cache items are in the queue, evaluate them
-            //all now as normal required modules, and reset waiting state.
-            if (!context.orderCount) {
-                waiting = context.orderWaiting;
-                context.orderWaiting = [];
-                require(waiting, contextName);
+            //Inject scripts that have all their dependencies at this point
+            if (readyCount) {
+                //Grab scripts that we can load
+                readyScripts = waiting.slice(0,readyCount);
+                //Remove them from the shared waiting array
+                context.orderWaiting = waiting.slice(readyCount);
+                //Require the ready scripts as normal modules
+                require(readyScripts, contextName);
+            }
+
+            //Clean out the left-over objects if everything has loaded
+            //to try to be memory friendly
+            if (!context.orderWaiting.length) {
+                context.orderSequence = [];
+                context.orderSequenceLookup = {};
             }
 
             //Remove this script tag from the DOM
@@ -74,7 +94,8 @@
         newContext: function (context) {
             require.mixin(context, {
                 orderWaiting: [],
-                orderCount: 0
+                orderSequence: [],
+                orderSequenceLookup: {}
             });
         },
 
@@ -100,7 +121,8 @@
                 //tag will cause the scripts to be executed immediately in the
                 //correct order.
                 context.orderWaiting.push(name);
-                context.orderCount += 1;
+                context.orderSequence.push({"name": name, "loaded": false});
+                context.orderSequenceLookup[name] = context.orderSequence.length - 1;
                 context.loaded[name] = false;
                 require.attach(url, contextName, name, scriptCacheCallback, "script/cache");
             }
